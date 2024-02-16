@@ -8,12 +8,12 @@ GAMA 1.9 or above (code was tested using v1.9.2 on Windows 11). Can be installed
 # 3. Demo
 The simulations are run in batches of 10 for each treatment, with each batch taking 5 ~ 10 minutes to complete on a relatively modern computer. The simulations will produce four .csv files: 
 1. TMT_PR50.csv
-	a. The time to 50% female population reduction (relative to starting population size) for each simulation
+	1. The time to 50% female population reduction (relative to starting population size) for each simulation
 2. TMT_PR95.csv
-	a. The time to 95% female population reduction (relative to starting population size) for each simulation
+	1. The time to 95% female population reduction (relative to starting population size) for each simulation
 3. TMT_step_output.csv
-	a. At each time point after the initial release, all simulations will write key parameter values to this file
-	b. *The first time point may result in several header rows being written to the file. Before further analysis, I've found it easiest to remove these extraneous headers manually .*
+	1. At each time point after the initial release, all simulations will write key parameter values to this file
+	2. *The first time point may result in several header rows being written to the file. Before further analysis, I've found it easiest to remove these extraneous headers manually .*
 1. TMT_female_output.csv
 	1. After the initial release, adult females will write to this file when they die with key parameters 
 # 4. Instructions for use
