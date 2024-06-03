@@ -1,6 +1,8 @@
 /**
 * Name: TMT-Aedes-model
 * Author: Samuel Beach 
+* Version: 3.0.0
+* Date: 2024-06-03
 */
 
 
@@ -9,33 +11,41 @@ model TMT
 global {
 	
 //	Experimental variables
-	float DDM_adj <- 0.01;
-	float tx_competitiveness <- 0.031;
-	float release_ratio <- 25.0;
+
+	float tx_competitiveness <- 0.031;	
 	int release_period <- 3;
-	int release_delay <- 365;
+	int release_delay <- 150;
 	float TMT_lethality <- 1.00;
-	float TMT_reduced_lethality <- 0.55;
+	
+	float release_ratio <- 12.0;			// Set to 3.0, 6.0, or 12.0
+	float polyandry <- 0.55;				// Set to 0.0, 0.2, or 0.55
+	float DDM <- 0.025;						// Set to 0.0025, 0.0075, or 0.025
+
+	float DDM_x;
+	float DDM_a;
+	float DDM_m;
+	float DDM_k;
+	
+	float polyandry_m;
+	float polyandry_b;
 	
 //	Global time variables
 	int day <- 24;
 	int week <- day * 7;
 	int year <- day * 365;
-	int max_days <- year * 2;
 	
 //	Initialisation parameters
-	int nb_init <- 2500;
+	int nb_init <- 10000;
 	bool is_batch <- false;
 	
 //	Immature stage-specific parameters
-	float trans_surv <- 0.7;
-	float imm_surv <- 0.9995;
-	int nb_larvae update: length(larvae) + length(larvae_L3);
-	float L1L2_surv function: nb_larvae > 0? imm_surv / (nb_larvae^DDM_adj): 0.9995;
+	float imm_surv <- 0.9975;
+	int nb_larvae function: length(larvae) > 0? length(larvae) + length(larvae_L3): 0;
+	
+	float DDM_surv function: nb_larvae > 0? (DDM_x - DDM_a) / (1 + exp(DDM_k * (nb_larvae - DDM_m))) + DDM_a : DDM_x;
 	
 //	Mosquito-specific parameters
 	float biting_success <- 0.8;
-	float adult_surv <- 0.98;
 	float mating_prob <- 0.95;
 	float fem_delta <- 0.005;
 	float male_delta <- 0.012;
@@ -54,9 +64,10 @@ global {
 	
 //	transgenic parameters
 	bool exp_fsRIDL <- false;
-	bool exp_TMT_reduced <- false;
 	bool exp_TMT <- false;
 	bool exp_SIT <- false;
+	bool exp_WT <- false;
+	string condition <- "WT";
 	
 //	World time, and daytime progression
 	float step <- 1 #hours;
@@ -72,14 +83,13 @@ global {
 	int nb_releases <- 0; 
 	int sum_Tx <- 0;
 	int nb_females_init;
+	int nb_males_init;
+	int nb_moz_init;
 	int nb_moz_release;
 	int max_moz_count;
 	int daily_moz;
 	int total_moz;
 	int mean_moz <- 1;
-	float surviving_females function: nb_days >= release_delay?
-										length(female_mosquito) / nb_females_init:
-										0;
 	int days_since_release function: nb_days >= release_delay?
 										nb_days - release_delay:
 										0;
@@ -88,13 +98,8 @@ global {
 		max_moz_count <- (length(male_mosquito) + length(female_mosquito));
 	}
 	
-	reflex mean_count when: new_day and nb_days <= release_delay {
-		daily_moz <- length(female_mosquito) + length(male_mosquito);
-		total_moz <- total_moz + daily_moz;
-		mean_moz <- round(total_moz / nb_days);
-	}
-	
-	reflex release when: new_day and
+	reflex release when: !exp_WT and
+						 new_day and
 						 nb_days >= release_delay and 
 						 nb_days mod release_period = 0 {
 						 	
@@ -110,11 +115,17 @@ global {
 	reflex when: nb_days >= release_delay and p50 = 0 and length(female_mosquito) <= nb_females_init * 0.5 {
 		p50 <- cycle - (release_delay*24);
 		save [	self.name,
+				self.cycle,
+				exp_WT,
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
-				exp_TMT_reduced,
-				p50
+				DDM,
+				polyandry,
+				release_ratio,
+				p50,
+				self.bite_count,
+				self.bite_plus_count
 		]
 		to: "TMT_PR50.csv" format: csv rewrite: false;
 	}
@@ -123,11 +134,17 @@ global {
 	reflex when: nb_days >= release_delay and p95 = 0 and length(female_mosquito) <= nb_females_init * 0.05 {
 		p95 <- cycle - (release_delay*24);
 		save [	self.name,
+				self.cycle,
+				exp_WT,
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
-				exp_TMT_reduced,
-				p95
+				DDM,
+				polyandry,
+				release_ratio,
+				p95,
+				self.bite_count,
+				self.bite_plus_count
 		]
 		to: "TMT_PR95.csv" format: csv rewrite: false;
 	}
@@ -136,16 +153,21 @@ global {
 		save [	self.name,
 				self.cycle,
 				length(female_mosquito),
+				length(male_mosquito),
 				self.nb_females_init,
+				self.nb_males_init,
+				self.nb_moz_init,
 				GC_plus_len,
 				GC_plus_init,
 				self.bite_count,
 				self.bite_plus_count,
 				self.sum_Tx,
+				exp_WT,
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
-				exp_TMT_reduced,
+				DDM,
+				polyandry,
 				release_period,
 				release_ratio,
 				tx_competitiveness
@@ -155,6 +177,8 @@ global {
 	
 	reflex init_female_count when: cycle = (release_delay * 24) {
 		nb_females_init <- length(female_mosquito);
+		nb_males_init <- length(male_mosquito);
+		nb_moz_init <- (length(female_mosquito) + length(male_mosquito));
 		GC_plus_init <- GC_plus_len;
 	}
 
@@ -163,8 +187,57 @@ global {
 	}
 	
 	init {
+		
+//		Initialise the values determining the strength of density dependent mortality
+// 		y = (x-a)/(1+e^(k(n-m)))+a
+//		y = adjusted hourly survival rate
+//		x = Upper bound survival rate
+//		a = Lower bound survival rate
+//		n = Number of larvae
+//		m = Midpoint of the sigmoidal curve (equilibrium point)
+//		k = Steepness of the curve
+
+		DDM_x <- 0.97 + DDM;
+		DDM_a <- 0.97 - DDM;
+		DDM_m <- 300.0;
+		DDM_k <- 0.0001 / DDM;
+		
+		
+		if (polyandry = 0.0) {			// remating =  0%
+			polyandry_m <- -0.0;	
+			polyandry_b <- 0.0;	 
+		}
+		else if (polyandry = 0.2) {		// remating ≈ 20%
+			polyandry_m <- -0.16;
+			polyandry_b <- 0.16;
+		}
+		else if (polyandry = 0.55) {		// remating ≈ 55%
+			polyandry_m <- -0.0475;
+			polyandry_b <- 0.14;
+		}
+		
+		
+		if (condition = "WT") {
+			exp_WT <- true;
+		}
+		else if (condition = "fsRIDL") {
+			exp_fsRIDL <- true;
+		}
+		else if (condition = "SIT") {
+			exp_SIT <- true;
+		}
+		else if (condition = "TMT") {
+			exp_TMT <- true;
+		}
+		
 		create egg number: nb_init {
-			age <- round(gauss(4,0.5));
+			age <- round(gauss(96,12));	
+		}
+		create female_mosquito number: 150 {
+			
+		}
+		create male_mosquito number: 150 {
+			
 		}
 	}
 }
@@ -175,34 +248,39 @@ species egg  {
 	bool fsRIDL_carrier;
 	bool male;
 	bool female;
+	float surv;
+	string sperm;
 	
 	init {
 		age <- cycle;
-		hours_hatch <- round(gauss(4,0.5));
+		hours_hatch <- round(gauss(96,12));
 		if (flip(0.5)) {
 			female <- true;
 		}
 		else {
 			male <- true;
 		}
+		surv <- DDM_surv;
+		
 	}
 	
 	reflex age {		
-		if (!flip(imm_surv)) {
+		if (sperm = "SIT") {
+			do die;
+		}
+		if (DDM_surv < surv) {
+			surv <- DDM_surv;
+		}
+		if (!flip(surv)) {
 			do die;
 		}
 		if (cycle >= age + hours_hatch) {
-			if (!flip(trans_surv)) {
-				do die;
+			create (larvae) {
+				self.fsRIDL_carrier <- myself.fsRIDL_carrier;
+				self.male <- myself.male;
+				self.female <- myself.female;
 			}
-			else {
-				create (larvae) {
-					self.fsRIDL_carrier <- myself.fsRIDL_carrier;
-					self.male <- myself.male;
-					self.female <- myself.female;
-				}
-				do die;
-			}
+			do die;
 		}
 	}
 }
@@ -218,12 +296,12 @@ species larvae {
 	init {
 		age <- cycle;
 		hours_ecdysis <- round(gauss(46,6));
-		surv <- L1L2_surv;
+		surv <- DDM_surv;
 	}
 
 	reflex age {
-		if (L1L2_surv < surv) {
-			surv <- L1L2_surv;
+		if (DDM_surv < surv) {
+			surv <- DDM_surv;
 		}
 		if (!flip(surv)) {
 			do die;
@@ -256,9 +334,6 @@ species larvae_L3 {
 			do die;
 		}
 		if (cycle >= age + hours_pupate) {
-			if (!flip(trans_surv)) {
-				do die;
-			}
 			if (female and fsRIDL_carrier) {
 				do die;
 			}
@@ -291,10 +366,7 @@ species pupae {
 			do die;
 		}
 		if (cycle >= age + hours_eclose) {
-			if (!flip(trans_surv)) {
-				do die;
-			}
-			else if (female) {
+			if (female) {
 				create (female_mosquito) {
 					self.fsRIDL_carrier <- myself.fsRIDL_carrier;
 				}
@@ -311,19 +383,30 @@ species pupae {
 
 species mosquito {
 	int age <- 0;
+	int age_hours;
 	bool SIT <- false;
 	bool fsRIDL <- false;
 	bool fsRIDL_carrier <- false;
+	bool receptive <- false;
+	
+	init {
+		age_hours <- cycle;
+	}
+	
+//	Mosquitoes will beceome receptive to mating 24 - 48 hours after eclosion
+	reflex receptive when: !receptive and (cycle - age_hours >= 24) {		
+		if (flip(1/24)) {
+			receptive <- true;
+		}
+	}
 }
 
 species female_mosquito parent: mosquito {
-	bool virgin <- true;
 	bool gravid <- false;
 	bool mated <- false;
 	bool fed <- false;
 	bool hungry <- false;
-	float remating;
-	float refeeding <- 0.0006;
+	float refeeding <- 0.0003;
 	int mated_timer <- 0;
 	int num_mates <- 0;
 	int num_eggs <- 0;
@@ -337,7 +420,10 @@ species female_mosquito parent: mosquito {
 	int hours_since_ovi;
 	int hours_since_feed <- 0;
 	int egg_timer <- 0;
-	int age_hours;
+	float remating;
+	
+	list<string> spermatheca;
+	
 	int ovi_eggs;
 	bool has_bitten;
 	
@@ -346,11 +432,10 @@ species female_mosquito parent: mosquito {
 		hours_ovi <- round(gauss(72,12));
 		hours_refeed <- round(gauss(12,4));
 		ovi_eggs <- round(gauss(60,10));
-		age_hours <- cycle;
 	}
 	
 	reflex polyandry when: mated and (mated_timer > 0 and mated_timer < 25) {
-		remating <- (-0.18*ln(mated_timer) + 0.20);
+		remating <- (((polyandry_m)*ln(mated_timer)) + polyandry_b);
 		if (flip(remating)) {
 			mated <- false;
 		}
@@ -386,9 +471,9 @@ species female_mosquito parent: mosquito {
 			hours_since_ovi <- hours_since_ovi + 1;
 		}
 		
-		
 //		If the female has mated and has blood fed, she can start producing eggs
-		if (!virgin and !gravid and fed) {
+//		if (!virgin and !gravid and fed) {
+		if (!gravid and fed) {
 			gravid <- true;
 		}
 		
@@ -406,16 +491,14 @@ species female_mosquito parent: mosquito {
 			egg_timer <- egg_timer + 1;
 		}
 		
-//		Decide activity based on time of day
+//		Activity selection
 		if (morning or afternoon) {
-			if (!mated) {
+			if (!mated and receptive) {
 				do Mate;
 			}
-			
 			else if (gravid and egg_timer >= hours_ovi) {
 				do Lay_eggs;
 			}
-
 			else if (hungry) {
 				do Feed;
 			}
@@ -425,14 +508,18 @@ species female_mosquito parent: mosquito {
 	
 	action Lay_eggs {
 		create (egg) number: ovi_eggs {
-			if (myself.fsRIDL) {	
+			
+			sperm <- one_of(myself.spermatheca);
+			
+			if (sperm = "fsRIDL") {
 				self.fsRIDL_carrier <- true;
 			}
-			if (myself.fsRIDL_carrier) {
-				if(flip(0.5)) {
+			else if (sperm = "fsRIDL_carrier") {
+				if (flip(0.5)) {
 					self.fsRIDL_carrier <- true;	
-				}
+				}				
 			}
+	
 			myself.num_eggs <- myself.num_eggs + 1;
 		}
 		egg_timer <- 0;
@@ -444,7 +531,7 @@ species female_mosquito parent: mosquito {
 	}
 	
 	action Feed {
-		if (!flip(biting_success)) {
+		if (flip(biting_success)) {	
 			num_bites <- num_bites + 1;
 			hungry <- false;
 			fed <- true;
@@ -476,13 +563,17 @@ species female_mosquito parent: mosquito {
 		if (nb_days >= release_delay and is_batch) {
 			save [	self.name,
 					cycle,
+					exp_WT,
 					exp_TMT,
 					exp_SIT,
 					exp_fsRIDL,
-					exp_TMT_reduced,
+					DDM,
+					polyandry,
+					release_ratio,
 					age,
 					num_mates,
 					num_bites,
+					num_eggs,
 					num_GC,
 					self.death_cause,
 					daily_bite,
@@ -494,24 +585,22 @@ species female_mosquito parent: mosquito {
 	}
 	
 	action Mate{
-//		The female will randomly chose one male from the total pool of WT and Tx males
+//		The female will randomly chose one male from the total pool of receptive WT and Tx males
 //		She will be less likely to choose a transgenic male depending on their competitiveness
-		int male_choice <- rnd(length(male_mosquito) + round((length(transgenic_mosquito) * tx_competitiveness)));
-		if (male_choice <= length(male_mosquito) and length(male_mosquito) > 0) {
-			male_mosquito mate <- one_of(male_mosquito);
+		int male_choice <- rnd(length(male_mosquito where (each.receptive)) + round((length(transgenic_mosquito where (each.receptive)) * tx_competitiveness)));
+		if (male_choice <= length(male_mosquito where (each.receptive)) and length(male_mosquito where (each.receptive)) > 0) {
+			male_mosquito mate <- one_of(male_mosquito where receptive);
 			ask mate {
-				if (!flip(mating_prob)) {
+				if (flip(mating_prob)) {
 					myself.mated <- true;
-					myself.virgin <- false;
 					
-//					Re-mating with WT male displaces fsRIDL sperm
-					if (myself.fsRIDL) {
-						myself.fsRIDL <- false;
-					}
-//					If the male is a carrier for fsRIDL, half of their offspring will be too
 					if (self.fsRIDL_carrier) {
-						myself.fsRIDL_carrier <- true;					
+						add "fsRIDL_carrier" to: myself.spermatheca;
 					}
+					else {
+						add "WT" to: myself.spermatheca;
+					}
+
 //					If this is my first mate, begin refractory period
 					if (myself.mated_timer = 0) {
 						myself.mated_timer <- 1;
@@ -519,45 +608,67 @@ species female_mosquito parent: mosquito {
 					
 					myself.num_mates <- myself.num_mates + 1;
 					
-					if (myself.num_mates = 1) {
-						mate1 <- mate1 + 1;
-					}
-					if (myself.num_mates = 2) {
-						mate1 <- mate1 - 1;
-						mate2 <- mate2 + 1;
-					}
-					if (myself.num_mates = 3) {
-						mate2 <- mate2 - 1;
-						mate3 <- mate3 + 1;
-					}
-					if (myself.num_mates = 4) {
-						mate3 <- mate3 - 1;
-						mateplus <- mateplus + 1;
+					if (!is_batch) {
+						if (myself.num_mates = 1) {
+							mate1 <- mate1 + 1;
+						}
+						if (myself.num_mates = 2) {
+							mate1 <- mate1 - 1;
+							mate2 <- mate2 + 1;
+						}
+						if (myself.num_mates = 3) {
+							mate2 <- mate2 - 1;
+							mate3 <- mate3 + 1;
+						}
+						if (myself.num_mates = 4) {
+							mate3 <- mate3 - 1;
+							mateplus <- mateplus + 1;
+						}
 					}
 				}
 			}
 		}
 		else if (length(transgenic_mosquito) > 0) {
-			transgenic_mosquito mate <- one_of(transgenic_mosquito);
+			transgenic_mosquito mate <- one_of(transgenic_mosquito where receptive);
 			ask mate {
-				if (!flip(mating_prob)) {
+				if (flip(mating_prob)) {
 					myself.mated <- true;
-					myself.virgin <- false;
-				}
-				if (myself.mated and fsRIDL) {
-					myself.fsRIDL <- true;
-//					Re-mating with a fsRIDL male displaces fsRIDL carrier sperm
-					if (myself.fsRIDL_carrier) {
-						myself.fsRIDL_carrier <- false;
+//					If this is my first mate, begin refractory period
+					if (myself.mated_timer = 0) {
+						myself.mated_timer <- 1;
 					}
-				}
-				if (myself.mated and TMT) {
-					if (flip(TMT_lethality)) {
-						myself.toxin <- true;	
+					
+					if (self.fsRIDL) {
+						add "fsRIDL" to: myself.spermatheca;
 					}
-				}
-				if (myself.mated and SIT) {
-					myself.virgin <- true;
+					else if (self.SIT) {
+						add "SIT" to: myself.spermatheca;
+					}
+					else if (self.TMT) {
+						if (flip(TMT_lethality)) {
+							myself.toxin <- true;	
+						}
+					}
+					
+					myself.num_mates <- myself.num_mates + 1;
+					
+					if (!is_batch) {
+						if (myself.num_mates = 1) {
+							mate1 <- mate1 + 1;
+						}
+						if (myself.num_mates = 2) {
+							mate1 <- mate1 - 1;
+							mate2 <- mate2 + 1;
+						}
+						if (myself.num_mates = 3) {
+							mate2 <- mate2 - 1;
+							mate3 <- mate3 + 1;
+						}
+						if (myself.num_mates = 4) {
+							mate3 <- mate3 - 1;
+							mateplus <- mateplus + 1;
+						}
+					}
 				}
 			}
 			if (toxin) {
@@ -569,7 +680,6 @@ species female_mosquito parent: mosquito {
 }
 
 species male_mosquito parent: mosquito {
-	
 	
 	reflex age when: new_day{
 		age <- age + 1;
@@ -593,53 +703,232 @@ species transgenic_mosquito parent: male_mosquito {
 		else if (exp_TMT = true) {
 			self.TMT <- true;
 		}
-		else if (exp_TMT_reduced = true) {
-			self.TMT <- true;
-		}
 		else if (exp_SIT = true) {
 			self.SIT <- true;
 		}
 	}
 }
 
-experiment TMT_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 120) {
-	parameter "TMT" var:exp_TMT init: true;
-	parameter "Batch" var:is_batch init: true;
+
+experiment WT type: gui {
+	
+	parameter "WT" var:exp_WT init: true;
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
-		monitor Days_since_release value: days_since_release refresh: every(day #cycles);
+		monitor Nb_mosquitoes value: (length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_agents value: (length(egg)+length(larvae)+length(larvae_L3)+length(pupae)+length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_L1L4 value: nb_larvae refresh: every(day #cycles);
+		monitor DDM_surv value: DDM_surv refresh: every(day #cycles);
+		monitor Polyandry value: polyandry;
+		monitor DDM value: DDM;
+		
+		
+		display nbMoz type: java2D refresh: every(day #cycles) {
+			chart "Wild mosquito population numbers" type: series {
+				data "Females" value: length(female_mosquito) color: #red;
+				data "Males" value: length(male_mosquito) color: #blue;
+				data "Total" value: (length(male_mosquito) + length(female_mosquito)) color: #black;
+			}
+		}
+		
+		display DDM type: java2D refresh: every(day #cycles) {
+			chart "Larval survival rate" type: series y_range: [0.967,1.0] {
+				data "Hourly survival rate" value: (DDM_surv) ;
+			}
+		}
+
+		
+		display MateCount type: java2D refresh: every(day #cycles) {
+			chart "How many mates has each female had??" type: pie {
+				data "1" value: mate1 color: #red;
+				data "2" value: mate2 color: #blue;
+				data "3" value: mate3 color: #green;
+				data "4+" value: mateplus color: #yellow;
+			}
+		}
+		
+		display Proportion type: java2D refresh: every(day #cycles) {
+			chart "Current mosquito population breakdown" type: pie {
+				data "Wild Females" value: length(female_mosquito) color: #red;
+				data "Wild Males" value: length(male_mosquito) color: #blue;
+				data "Transgenic Males" value: length(transgenic_mosquito) color: #green;
+			}
+		}  
 	}
 }
 
-experiment TMT_reduced_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 120) {
-	parameter "TMT_reduced" var:exp_TMT_reduced init: true;
-	parameter "Batch" var:is_batch init: true;
-	parameter "Lethality" var:TMT_lethality init: TMT_reduced_lethality;
+experiment TMT type: gui {
+	
+	parameter "TMT" var:condition init: "TMT";
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
-		monitor Days_since_release value: days_since_release refresh: every(day #cycles);
+		monitor Nb_mosquitoes value: (length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_agents value: (length(egg)+length(larvae)+length(larvae_L3)+length(pupae)+length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_L1L4 value: nb_larvae refresh: every(day #cycles);
+		monitor DDM_surv value: DDM_surv refresh: every(day #cycles);
+		monitor Polyandry value: polyandry;
+		monitor DDM value: DDM;
+		monitor Release_ratio value: release_ratio;
+		monitor Release_period value: release_period;
+		monitor Total_nb_transgenics value: sum_Tx refresh: every(day #cycles);
+		monitor Bite_count value: bite_count refresh: every(day #cycles);
+		monitor Bite_plus_count value: bite_plus_count refresh: every(day #cycles);
+		monitor p50 value: p50 refresh: every(day #cycles);
+		monitor p95 value: p95 refresh: every(day #cycles);
+		
+		display nbMoz type: java2D refresh: every(day #cycles) {
+			chart "Wild mosquito population numbers" type: series {
+				data "Females" value: length(female_mosquito) color: #red;
+				data "Males" value: length(male_mosquito) color: #blue;
+				data "Total" value: (length(male_mosquito) + length(female_mosquito)) color: #black;
+			}
+		}
+		
+		display DDM type: java2D refresh: every(day #cycles) {
+			chart "Larval survival rate" type: series y_range: [0.967,1.0] {
+				data "Hourly survival rate" value: (DDM_surv) ;
+			}
+		}
+
+		
+		display MateCount type: java2D refresh: every(day #cycles) {
+			chart "How many mates has each female had??" type: pie {
+				data "1" value: mate1 color: #red;
+				data "2" value: mate2 color: #blue;
+				data "3" value: mate3 color: #green;
+				data "4+" value: mateplus color: #yellow;
+			}
+		}
+		
+		display Proportion type: java2D refresh: every(day #cycles) {
+			chart "Current mosquito population breakdown" type: pie {
+				data "Wild Females" value: length(female_mosquito) color: #red;
+				data "Wild Males" value: length(male_mosquito) color: #blue;
+				data "Transgenic Males" value: length(transgenic_mosquito) color: #green;
+			}
+		}  
 	}
 }
 
-experiment fsRIDL_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 120) {
-	parameter "fsRIDL" var:exp_fsRIDL init: true;
-	parameter "Batch" var:is_batch init: true;
+experiment fsRIDL type: gui {
+	
+	parameter "fsRIDL" var:condition init: "fsRIDL";
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
-		monitor Days_since_release value: days_since_release refresh: every(day #cycles);
+		monitor Nb_mosquitoes value: (length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_agents value: (length(egg)+length(larvae)+length(larvae_L3)+length(pupae)+length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_L1L4 value: nb_larvae refresh: every(day #cycles);
+		monitor DDM_surv value: DDM_surv refresh: every(day #cycles);
+		monitor Polyandry value: polyandry;
+		monitor DDM value: DDM;
+		monitor Release_ratio value: release_ratio;
+		monitor Release_period value: release_period;
+		monitor Total_nb_transgenics value: sum_Tx refresh: every(day #cycles);
+		monitor Bite_count value: bite_count refresh: every(day #cycles);
+		monitor Bite_plus_count value: bite_plus_count refresh: every(day #cycles);
+		monitor p50 value: p50 refresh: every(day #cycles);
+		monitor p95 value: p95 refresh: every(day #cycles);
+		
+		display nbMoz type: java2D refresh: every(day #cycles) {
+			chart "Wild mosquito population numbers" type: series {
+				data "Females" value: length(female_mosquito) color: #red;
+				data "Males" value: length(male_mosquito) color: #blue;
+				data "Total" value: (length(male_mosquito) + length(female_mosquito)) color: #black;
+			}
+		}
+		
+		display DDM type: java2D refresh: every(day #cycles) {
+			chart "Larval survival rate" type: series y_range: [0.967,1.0] {
+				data "Hourly survival rate" value: (DDM_surv) ;
+			}
+		}
+
+		
+		display MateCount type: java2D refresh: every(day #cycles) {
+			chart "How many mates has each female had??" type: pie {
+				data "1" value: mate1 color: #red;
+				data "2" value: mate2 color: #blue;
+				data "3" value: mate3 color: #green;
+				data "4+" value: mateplus color: #yellow;
+			}
+		}
+		
+		display Proportion type: java2D refresh: every(day #cycles) {
+			chart "Current mosquito population breakdown" type: pie {
+				data "Wild Females" value: length(female_mosquito) color: #red;
+				data "Wild Males" value: length(male_mosquito) color: #blue;
+				data "Transgenic Males" value: length(transgenic_mosquito) color: #green;
+			}
+		} 
 	}
 }
 
-
-experiment SIT_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 120) {
-	parameter "SIT" var:exp_SIT init: true;
-	parameter "Batch" var:is_batch init: true;
+experiment SIT type: gui {
+	
+	parameter "SIT" var:condition init: "SIT";
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
-		monitor Days_since_release value: days_since_release refresh: every(day #cycles);
+		monitor Nb_mosquitoes value: (length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_agents value: (length(egg)+length(larvae)+length(larvae_L3)+length(pupae)+length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_L1L4 value: nb_larvae refresh: every(day #cycles);
+		monitor DDM_surv value: DDM_surv refresh: every(day #cycles);
+		monitor Polyandry value: polyandry;
+		monitor DDM value: DDM;
+		monitor Release_ratio value: release_ratio;
+		monitor Release_period value: release_period;
+		monitor Total_nb_transgenics value: sum_Tx refresh: every(day #cycles);
+		monitor Bite_count value: bite_count refresh: every(day #cycles);
+		monitor Bite_plus_count value: bite_plus_count refresh: every(day #cycles);
+		monitor p50 value: p50 refresh: every(day #cycles);
+		monitor p95 value: p95 refresh: every(day #cycles);
+		
+		display nbMoz type: java2D refresh: every(day #cycles) {
+			chart "Wild mosquito population numbers" type: series {
+				data "Females" value: length(female_mosquito) color: #red;
+				data "Males" value: length(male_mosquito) color: #blue;
+				data "Total" value: (length(male_mosquito) + length(female_mosquito)) color: #black;
+			}
+		}
+		
+		display DDM type: java2D refresh: every(day #cycles) {
+			chart "Larval survival rate" type: series y_range: [0.967,1.0] {
+				data "Hourly survival rate" value: (DDM_surv) ;
+			}
+		}
+
+		
+		display MateCount type: java2D refresh: every(day #cycles) {
+			chart "How many mates has each female had??" type: pie {
+				data "1" value: mate1 color: #red;
+				data "2" value: mate2 color: #blue;
+				data "3" value: mate3 color: #green;
+				data "4+" value: mateplus color: #yellow;
+			}
+		}
+		
+		display Proportion type: java2D refresh: every(day #cycles) {
+			chart "Current mosquito population breakdown" type: pie {
+				data "Wild Females" value: length(female_mosquito) color: #red;
+				data "Wild Males" value: length(male_mosquito) color: #blue;
+				data "Transgenic Males" value: length(transgenic_mosquito) color: #green;
+			}
+		} 
+	}
+}
+
+experiment bulk_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 300) {
+	parameter "Batch" var:is_batch init: true;
+
+	parameter "DDM" var:DDM among: [0.0025, 0.0075, 0.025];
+	parameter "Polyandry" var:polyandry among: [0.0, 0.2, 0.55];
+	parameter "Release ratio" var:release_ratio among: [3.0, 6.0, 12.0];
+	parameter "Biocontrol method" var:condition among: ["WT", "fsRIDL", "SIT", "TMT"];
+	
+	output {
+		monitor Nb_days value: nb_days refresh: every(day #cycles);
 	}
 }
