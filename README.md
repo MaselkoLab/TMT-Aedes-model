@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.11439090.svg)](https://doi.org/10.5281/zenodo.11439090)
+
 # 1. System requirements
 GAMA 1.9 or above (code was tested using v1.9.2 on Windows 11). Can be installed on Windows, macOS, Linux, or Docker. Code and installation instructions available at [Installation | GAMA Platform (gama-platform.org)](https://gama-platform.org/wiki/Installation).
 # 2. Installation guide
