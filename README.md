@@ -19,7 +19,10 @@ The simulations will produce four .csv files:
 	1. At each time point after the initial release, all simulations will write key parameter values to this file
 	2. *The first time point in the first batch may result in multiple header rows being written to the file, which must be removed prior to analysis.*
 4. TMT_female_output.csv
-	1. After the initial release, adult females will write to this file when they die with key parameters 
+	1. After the initial release, adult females will write to this file when they die with key parameters
+
+ Example data and analysis are available from the following repository:
+ [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.11465043.svg)](https://doi.org/10.5281/zenodo.11465043)
 # 4. Instructions for use
 1. Adjust any experimental variables within the `global` section of the code
 2. Adjust any parameter variables within the `bulk_batch` experiment section
