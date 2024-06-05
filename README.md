@@ -21,7 +21,8 @@ The simulations will produce four .csv files:
 4. TMT_female_output.csv
 	1. After the initial release, adult females will write to this file when they die with key parameters
 
- Example data and analysis are available from the following repository:
+ We have found it easiest to work with this data by copying it to an SQLite database file. Example data and analysis are available from the following repository:
+ 
  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.11465043.svg)](https://doi.org/10.5281/zenodo.11465043)
 # 4. Instructions for use
 1. Adjust any experimental variables within the `global` section of the code
