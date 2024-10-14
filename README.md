@@ -8,7 +8,7 @@ GAMA 1.9 or above (code was tested using v1.9.2 on Windows 11). Can be installed
 3. Create a new project within GAMA, then copy the model file into the `models` folder within the project.
 4. Typical install time = 5 minutes
 # 3. Demo
-For visualisation and demonstration purposes, simulations can be run singly (i.e. `WT`, `TMT`, `fsRIDL`, `SIT` simulations). Batch simulations of all parameter and technology combinations (i.e. the `bulk_batch` simulation) are used to collect data for analysis. The simulations are run in batches of 10 for each combination, with each batch taking ~ 5 minutes to complete on a relatively modern computer. With 3 x 3 parameters and 4 technologies, 144 simulations will be run in total. We performed these simulations on a Ryzen 5 7640U with 32 GB of memory, which took 8 ~ 12 hours to complete.
+For visualisation and demonstration purposes, simulations can be run singly (i.e. `WT`, `TMT`, `fsRIDL`, `SIT` simulations). Batch simulations of all parameter and technology combinations (i.e. the `bulk_batch` simulation) or mating lethality values (i.e. the `lethality_batch` simulation) are used to collect data for analysis. The simulations are run in batches of 10 for each combination, with each batch taking ~ 5 minutes to complete on a relatively modern computer. With 3 x 3 parameters and 4 technologies, 144 simulations will be run in total for `bulk_batch`. We performed these simulations on a Ryzen 5 7640U with 32 GB of memory, which took 8 ~ 12 hours to complete.
 ## Data
 The simulations will produce four .csv files: 
 1. TMT_PR50.csv
