@@ -1,8 +1,8 @@
 /**
 * Name: TMT-Aedes-model
 * Author: Samuel Beach 
-* Version: 3.0.0
-* Date: 2024-06-03
+* Version: 3.1.0
+* Date: 2024-10-04
 */
 
 
@@ -14,12 +14,12 @@ global {
 
 	float tx_competitiveness <- 0.031;	
 	int release_period <- 3;
-	int release_delay <- 150;
-	float TMT_lethality <- 1.00;
+	int release_delay <- 150;				
+	float TMT_lethality <- 0.75;
 	
 	float release_ratio <- 12.0;			// Set to 3.0, 6.0, or 12.0
-	float polyandry <- 0.55;				// Set to 0.0, 0.2, or 0.55
-	float DDM <- 0.025;						// Set to 0.0025, 0.0075, or 0.025
+	float polyandry <- 0.2;					// Set to 0.0, 0.2, or 0.55
+	float DDM <- 0.0075;					// Set to 0.0025, 0.0075, or 0.025
 
 	float DDM_x;
 	float DDM_a;
@@ -67,6 +67,7 @@ global {
 	bool exp_TMT <- false;
 	bool exp_SIT <- false;
 	bool exp_WT <- false;
+	bool exp_TMT_SIT <- false;
 	string condition <- "WT";
 	
 //	World time, and daytime progression
@@ -120,9 +121,11 @@ global {
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
+				exp_TMT_SIT,
 				DDM,
 				polyandry,
 				release_ratio,
+				TMT_lethality,
 				p50,
 				self.bite_count,
 				self.bite_plus_count
@@ -139,9 +142,11 @@ global {
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
+				exp_TMT_SIT,
 				DDM,
 				polyandry,
 				release_ratio,
+				TMT_lethality,
 				p95,
 				self.bite_count,
 				self.bite_plus_count
@@ -166,10 +171,12 @@ global {
 				exp_TMT,
 				exp_fsRIDL,
 				exp_SIT,
+				exp_TMT_SIT,
 				DDM,
 				polyandry,
 				release_period,
 				release_ratio,
+				TMT_lethality,
 				tx_competitiveness
 		]
 		to: "TMT_step_output.csv" format: csv rewrite: false;
@@ -228,6 +235,9 @@ global {
 		}
 		else if (condition = "TMT") {
 			exp_TMT <- true;
+		}
+		else if (condition = "TMT_SIT") {
+			exp_TMT_SIT <- true;
 		}
 		
 		create egg number: nb_init {
@@ -334,7 +344,7 @@ species larvae_L3 {
 			do die;
 		}
 		if (cycle >= age + hours_pupate) {
-			if (female and fsRIDL_carrier) {
+			if (female and fsRIDL_carrier) {				
 				do die;
 			}
 			else {
@@ -567,9 +577,11 @@ species female_mosquito parent: mosquito {
 					exp_TMT,
 					exp_SIT,
 					exp_fsRIDL,
+					exp_TMT_SIT,
 					DDM,
 					polyandry,
 					release_ratio,
+					TMT_lethality,
 					age,
 					num_mates,
 					num_bites,
@@ -641,10 +653,10 @@ species female_mosquito parent: mosquito {
 					if (self.fsRIDL) {
 						add "fsRIDL" to: myself.spermatheca;
 					}
-					else if (self.SIT) {
+					if (self.SIT) {
 						add "SIT" to: myself.spermatheca;
 					}
-					else if (self.TMT) {
+					if (self.TMT) {
 						if (flip(TMT_lethality)) {
 							myself.toxin <- true;	
 						}
@@ -706,6 +718,10 @@ species transgenic_mosquito parent: male_mosquito {
 		else if (exp_SIT = true) {
 			self.SIT <- true;
 		}
+		else if (exp_TMT_SIT) {
+			self.SIT <-true;
+			self.TMT <- true;
+		}
 	}
 }
 
@@ -761,6 +777,60 @@ experiment WT type: gui {
 experiment TMT type: gui {
 	
 	parameter "TMT" var:condition init: "TMT";
+	
+	output {
+		monitor Nb_days value: nb_days refresh: every(day #cycles);
+		monitor Nb_mosquitoes value: (length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_agents value: (length(egg)+length(larvae)+length(larvae_L3)+length(pupae)+length(female_mosquito)+length(male_mosquito)) refresh: every(day #cycles);
+		monitor Nb_L1L4 value: nb_larvae refresh: every(day #cycles);
+		monitor DDM_surv value: DDM_surv refresh: every(day #cycles);
+		monitor Polyandry value: polyandry;
+		monitor DDM value: DDM;
+		monitor Release_ratio value: release_ratio;
+		monitor Release_period value: release_period;
+		monitor Total_nb_transgenics value: sum_Tx refresh: every(day #cycles);
+		monitor Bite_count value: bite_count refresh: every(day #cycles);
+		monitor Bite_plus_count value: bite_plus_count refresh: every(day #cycles);
+		monitor p50 value: p50 refresh: every(day #cycles);
+		monitor p95 value: p95 refresh: every(day #cycles);
+		
+		display nbMoz type: java2D refresh: every(day #cycles) {
+			chart "Wild mosquito population numbers" type: series {
+				data "Females" value: length(female_mosquito) color: #red;
+				data "Males" value: length(male_mosquito) color: #blue;
+				data "Total" value: (length(male_mosquito) + length(female_mosquito)) color: #black;
+			}
+		}
+		
+		display DDM type: java2D refresh: every(day #cycles) {
+			chart "Larval survival rate" type: series y_range: [0.967,1.0] {
+				data "Hourly survival rate" value: (DDM_surv) ;
+			}
+		}
+
+		
+		display MateCount type: java2D refresh: every(day #cycles) {
+			chart "How many mates has each female had??" type: pie {
+				data "1" value: mate1 color: #red;
+				data "2" value: mate2 color: #blue;
+				data "3" value: mate3 color: #green;
+				data "4+" value: mateplus color: #yellow;
+			}
+		}
+		
+		display Proportion type: java2D refresh: every(day #cycles) {
+			chart "Current mosquito population breakdown" type: pie {
+				data "Wild Females" value: length(female_mosquito) color: #red;
+				data "Wild Males" value: length(male_mosquito) color: #blue;
+				data "Transgenic Males" value: length(transgenic_mosquito) color: #green;
+			}
+		}  
+	}
+}
+
+experiment TMT_SIT type: gui {
+	
+	parameter "TMT_SIT" var:condition init: "TMT_SIT";
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
@@ -927,6 +997,21 @@ experiment bulk_batch type: batch repeat: 10 keep_seed: false until: nb_days >= 
 	parameter "Polyandry" var:polyandry among: [0.0, 0.2, 0.55];
 	parameter "Release ratio" var:release_ratio among: [3.0, 6.0, 12.0];
 	parameter "Biocontrol method" var:condition among: ["WT", "fsRIDL", "SIT", "TMT"];
+	
+	output {
+		monitor Nb_days value: nb_days refresh: every(day #cycles);
+	}
+}
+
+experiment lethality_batch type: batch repeat: 10 keep_seed: false until: nb_days >= (release_delay + 300) {
+	parameter "Batch" var:is_batch init: true;
+
+	parameter "DDM" var:DDM init: 0.0075;
+	parameter "Polyandry" var:polyandry init: 0.2;
+	parameter "Release ratio" var:release_ratio init: 12.0;
+	
+	parameter "TMT sterility" var:condition among: ["TMT", "TMT_SIT"];
+	parameter "TMT lethality" var:TMT_lethality min: 0.1 max: 1.0 step: 0.1;
 	
 	output {
 		monitor Nb_days value: nb_days refresh: every(day #cycles);
